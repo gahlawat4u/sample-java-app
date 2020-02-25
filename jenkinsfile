@@ -1,0 +1,84 @@
+node {
+    try {
+        def mvnHome
+
+        env.JAVA_HOME="${tool 'jdk'}"
+        echo env.JAVA_HOME
+        env.BRANCH_NAME="${BRANCH_NAME}"
+        echo env.BRANCH_NAME
+        
+    if 	(env.BRANCH_NAME != "master") {       
+		checkout()
+        unitTest()
+        codeBuild()
+        dockerLoginandDeploy()
+		                
+    } //master/staging branch / production
+    
+	else { 
+        checkout()
+        unitTest
+        ocLogin()
+		buildAndDeploy()
+        }
+		
+	currentBuild.result = 'SUCCESS'
+		}
+	catch (exc) {
+    currentBuild.result = 'FAILURE'
+  }
+  
+  finally {
+        stage ('Mail Send')
+		emailext attachLog: true, body:
+        """<p>${currentBuild.result}: Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} Branch ${BRANCH_NAME}'
+        </b></p><p>View \n More info at: "<a href="${env.BUILD_URL}">
+        ${env.JOB_NAME}:${env.BUILD_NUMBER}</a>"</p> 
+        <p><i>(Build log is attached.)</i></p>""", 
+        compressLog: true,
+        recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']],
+        replyTo: 'chandra.datt@india.nec.com', 
+        subject: "Jenkins Build Status: ${currentBuild.result?:'SUCCESS'} -  Job \'${env.JOB_NAME}:${env.BUILD_NUMBER}", 
+        to: 'sachin.gahlawat@india.nec.com'
+		}
+	}
+
+def checkout() {
+		stage 'Code Checkout'
+		checkout scm
+		}
+	
+	def mvn(args) {
+    mvnHome = tool name: 'maven', type: 'maven'
+    sh "'${mvnHome}/bin/mvn' $args -Dmaven.test.failure.ignore"
+    sh "'${mvnHome}/bin/mvn' $args"
+}
+
+def unitTest() {
+    stage 'Unit tests'   
+    mvn 'test -B -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true'
+    if (currentBuild.result == "UNSTABLE") {
+        sh "exit 1"
+    }
+}
+
+def codeBuild() {
+	stage 'Code build'
+	mvn 'clean install'
+    //mvn 'package'
+}
+
+def dockerLoginandDeploy() {
+    stage 'docker Login and Deploy'
+    echo "Var=${env.TARGET_LOGIN}"
+				sshagent(credentials: ["${env.TARGET_LOGIN}"]) {
+					    sh """
+                        tar czf dump.tar.gz Dockerfile ./target/spring-boot-jpa-0.0.1-SNAPSHOT.jar
+                        ssh -o 'StrictHostKeyChecking no' centos@13.55.207.131 'cd /tmp/dump/; sudo rm -rf *'
+                        scp -o 'StrictHostKeyChecking no' dump.tar.gz centos@13.55.207.131:/tmp/dump/
+						ssh -o 'StrictHostKeyChecking no' centos@13.55.207.131 'cd /tmp/dump; sudo tar xzf dump.tar.gz; sudo docker build -t demo-mysql-java:latest .; sudo docker stop demo-mysql; sudo docker rm demo-mysql; sudo docker run -d -it -p 8180:8080 --name=demo-mysql demo-mysql-java'
+						"""
+       				}
+				}
+
+
