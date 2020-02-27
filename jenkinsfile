@@ -8,7 +8,7 @@ node {
         echo env.BRANCH_NAME
         
     if 	(env.BRANCH_NAME != "master") {       
-		checkout()
+	checkout()
         unitTest()
         codeBuild()
         dockerLoginandDeploy()
@@ -18,8 +18,8 @@ node {
 	else { 
         checkout()
         unitTest
-        ocLogin()
-		buildAndDeploy()
+        codeBuild()
+	dockerLoginandDeploy()
         }
 		
 	currentBuild.result = 'SUCCESS'
