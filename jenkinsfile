@@ -13,7 +13,7 @@ node {
         codeBuild()
         dockerLoginandDeploy()
 		                
-    } //master/staging branch / production
+    } //staging branch / production
     
 	else { 
         checkout()
